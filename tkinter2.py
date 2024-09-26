@@ -17,6 +17,7 @@ course_data_list : list
 
 Functions:
 ----------
+-load delete into the database
 - load_json_from_file
 - save_json_to_file
 - remove_all_data_from_trv
@@ -39,8 +40,281 @@ Functions:
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from Part12 import Student, Instructor, Course  # Importing classes from Part1.py
 import json
+import sqlite3
+import re
+
+# Helper function for email validation
+
+
+def is_valid_email(email):
+    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+
+
+class Person:
+    def __init__(self, name, age, _email):
+        self.name = name
+        self.age = age
+        if int(age) < 0:
+            raise ValueError("Age cannot be negative")
+        if not is_valid_email(_email):
+            raise ValueError("Invalid email format")
+        self._email = _email
+
+    def introduce(self):
+        return f"Name: {self.name}, Age: {self.age}"
+
+    def to_dict(self):
+        return {
+            "n_entry": self.name,
+            "Age": self.age,
+            "email": self._email,
+            "id": self.student_id
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            name=data["n_entry"],
+            age=data["Age"],
+            _email=data["email"],
+            student_id=data["id"]
+        )
+
+
+class Student(Person):
+    def __init__(self, name, age, _email, student_id, registered_courses=None):
+        super().__init__(name, age, _email)
+        self.student_id = student_id
+        self.registered_courses = registered_courses if registered_courses is not None else []
+
+    def register_course(self, course):
+        self.registered_courses.append(course)
+
+    def to_dict(self):
+        # Convert the object to a dictionary for JSON storage
+        return {
+            "n_entry": self.name,
+            "Age": self.age,
+            "email": self._email,
+            "id": self.student_id,
+            "registered_courses": self.registered_courses
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        # Create a Student object from a dictionary
+        return cls(
+            name=data["n_entry"],
+            age=data["Age"],
+            _email=data["email"],
+            student_id=data["id"],
+            registered_courses=data.get("registered_courses", [])
+        )
+
+
+class Instructor(Person):
+    def __init__(self, name, age, _email, instructor_id, assigned_courses=None):
+        super().__init__(name, age, _email)
+        self.instructor_id = instructor_id
+        self.assigned_courses = assigned_courses if assigned_courses is not None else []
+
+    def assign_course(self, course):
+        self.assigned_courses.append(course)
+
+
+class Course:
+    def __init__(self, course_id, course_name, instructor=None, enrolled_students=None):
+        self.course_id = course_id
+        self.course_name = course_name
+        self.instructor = instructor  # Instructor object
+        # List of Student objects
+        self.enrolled_students = enrolled_students if enrolled_students is not None else []
+
+    def add_student(self, student):
+        self.enrolled_students.append(student)
+
+
+# Database functions
+def initialize_db():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+
+    # Drop the existing table if it exists
+    c.execute('DROP TABLE IF EXISTS students')
+    c.execute('DROP TABLE IF EXISTS instructors')
+    c.execute('DROP TABLE IF EXISTS courses')
+    c.execute('DROP TABLE IF EXISTS registrations')
+    c.execute('DROP TABLE IF EXISTS assignments')
+
+    # Create tables
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS students (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            age INTEGER,
+            email TEXT
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS instructors (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            age INTEGER,
+            email TEXT
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS courses (
+            id TEXT PRIMARY KEY,
+            name TEXT
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS registrations (
+            student_id TEXT,
+            course_id TEXT,
+            FOREIGN KEY (student_id) REFERENCES students (id),
+            FOREIGN KEY (course_id) REFERENCES courses (id)
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS assignments (
+            instructor_id TEXT,
+            course_id TEXT,
+            FOREIGN KEY (instructor_id) REFERENCES instructors (id),
+            FOREIGN KEY (course_id) REFERENCES courses (id)
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+
+def insert_student(student_id, name, age, email):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO students (id, name, age, email) VALUES (?, ?, ?, ?)',
+              (student_id, name, age, email))
+    conn.commit()
+    conn.close()
+
+
+def insert_instructor(instructor_id, name, age, email):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO instructors (id, name, age, email) VALUES (?, ?, ?, ?)',
+              (instructor_id, name, age, email))
+    conn.commit()
+    conn.close()
+
+
+def insert_course(course_id, name):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO courses (id, name) VALUES (?, ?)', (course_id, name))
+    conn.commit()
+    conn.close()
+
+
+def insert_registration(student_id, course_id):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO registrations (student_id, course_id) VALUES (?, ?)',
+              (student_id, course_id))
+    conn.commit()
+    conn.close()
+
+
+def insert_assignment(instructor_id, course_id):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO assignments (instructor_id, course_id) VALUES (?, ?)',
+              (instructor_id, course_id))
+    conn.commit()
+    conn.close()
+
+
+def fetch_all_students():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM students')
+    students = c.fetchall()
+    conn.close()
+    return students
+
+
+def fetch_all_instructors():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM instructors')
+    instructors = c.fetchall()
+    conn.close()
+    return instructors
+
+
+def fetch_all_courses():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM courses')
+    courses = c.fetchall()
+    conn.close()
+    return courses
+
+
+def fetch_all_registrations():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('''
+        SELECT students.id, courses.name, 'Registered'
+        FROM registrations
+        JOIN students ON registrations.student_id = students.id
+        JOIN courses ON registrations.course_id = courses.id
+    ''')
+    registrations = c.fetchall()
+    conn.close()
+    return registrations
+
+
+def fetch_all_assignments():
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+    c.execute('''
+        SELECT instructors.id, courses.name, 'Assigned'
+        FROM assignments
+        JOIN instructors ON assignments.instructor_id = instructors.id
+        JOIN courses ON assignments.course_id = courses.id
+    ''')
+    assignments = c.fetchall()
+    conn.close()
+    return assignments
+
+
+def delete_record(record_id, record_type):
+    conn = sqlite3.connect('school_management.db')
+    c = conn.cursor()
+
+    if record_type == "Student":
+        c.execute('DELETE FROM students WHERE id = ?', (record_id,))
+        c.execute('DELETE FROM registrations WHERE student_id = ?', (record_id,))
+    elif record_type == "Instructor":
+        c.execute('DELETE FROM instructors WHERE id = ?', (record_id,))
+        c.execute('DELETE FROM assignments WHERE instructor_id = ?', (record_id,))
+    elif record_type == "Course":
+        c.execute('DELETE FROM courses WHERE id = ?', (record_id,))
+        c.execute('DELETE FROM registrations WHERE course_id = ?', (record_id,))
+        c.execute('DELETE FROM assignments WHERE course_id = ?', (record_id,))
+
+    conn.commit()
+    conn.close()
+
+
+# Initialize database
+initialize_db()
 
 global my_data_list
 global currentRowIndex
@@ -181,6 +455,8 @@ def save_json_to_file():
     with open("school_data.json", "w") as file_handler:
         json.dump([student.to_dict()
                   for student in my_data_list], file_handler, indent=4)
+    file_handler.close()
+    print('file has been written to and close')
 
 
 def remove_all_data_from_trv():
@@ -191,6 +467,8 @@ def remove_all_data_from_trv():
     """
     for item in trv.get_children():
         trv.delete(item)
+
+# diff
 
 
 def load_trv_with_json():
@@ -252,45 +530,28 @@ def find_row_in_my_data_list(value):
     return (-1)
 
 
-# def change_bg_color(new_color):
+# def change_enabled_state(state):
 #     """
-#     Changes the background color of all input fields in the student form.
+#     Enables or disables specific buttons based on the state of the form.
 
 #     Parameters:
 #     -----------
-#     new_color : str
-#         The color to set as the background for the input fields.
+#     state : str
+#         The current state of the form, which determines which buttons are enabled or disabled.
+#         Possible values: 'Edit', 'Cancel', 'New'.
 #     """
-#     n_entry.config(bg=new_color)
-#     age_spinbox.config(bg=new_color)
-#     email_entry.config(bg=new_color)
-#     id1_entry.config(bg=new_color)
-
-# create the buttons
-
-
-def change_enabled_state(state):
-    """
-    Enables or disables specific buttons based on the state of the form.
-
-    Parameters:
-    -----------
-    state : str
-        The current state of the form, which determines which buttons are enabled or disabled.
-        Possible values: 'Edit', 'Cancel', 'New'.
-    """
-    if state == 'Edit':
-        btnUpdate["state"] = "normal"
-        btnDelete["state"] = "normal"
-        btnAdd["state"] = "disabled"
-    elif state == "Cancel":
-        btnUpdate["state"] = "disabled"
-        btnDelete["state"] = "disabled"
-        btnAdd["state"] = "disabled"
-    else:
-        btnUpdate["state"] = "disabled"
-        btnDelete["state"] = "disabled"
-        btnAdd["state"] = "normal"
+#     if state == 'Edit':
+#         btnUpdate["state"] = "normal"
+#         btnDelete["state"] = "normal"
+#         btnAdd["state"] = "disabled"
+#     elif state == "Cancel":
+#         btnUpdate["state"] = "disabled"
+#         btnDelete["state"] = "disabled"
+#         btnAdd["state"] = "disabled"
+#     else:
+#         btnUpdate["state"] = "disabled"
+#         btnDelete["state"] = "disabled"
+#         btnAdd["state"] = "normal"
 
 
 def load_edit_field_with_row_data(_tuple):
@@ -375,10 +636,11 @@ def add_entry():
     Name = n_entry.get()
     Age = int(age_spinbox.get())
     Email = email_entry.get()
-    ID = id1_entry.get()
+    id1 = id1_entry.get()
 
-    new_student = Student(Name, Age, Email, ID)
-    my_data_list.append(new_student)
+    process_request('_INSERT_', Name, Age, Email, id1)
+    # new_student = Student(Name, Age, Email, id1)
+    # my_data_list.append(new_student)
     save_json_to_file()
     load_trv_with_json()
     clear_all_fields()
@@ -406,12 +668,14 @@ def delete_entry():
     Retrieves the name entered in the form and processes the request to delete the student.
     """
     Name = n_entry.get()
-    student = search_student(Name)
-    if student:
-        my_data_list.remove(student)
-        save_json_to_file()
-        load_trv_with_json()
-        clear_all_fields()
+    # student = search_student(Name)
+    process_request('_DELETE_', Name, None, None, None)
+
+    # if student:
+    #     my_data_list.remove(student)
+    #     save_json_to_file()
+    #     load_trv_with_json()
+    #     clear_all_fields()
 
 
 def process_request(command_type, name_value, age_value, email_value, id_value):
@@ -437,6 +701,11 @@ def process_request(command_type, name_value, age_value, email_value, id_value):
     global my_data_list
 
     if command_type == "_UPDATE_":
+        row = find_row_in_my_data_list(name_value)
+        if row >= 0:
+            data = {"n_entry": name_value,
+                    "Age": age_value, "email": email_value, "id": id_value}
+            my_data_list[row] = data
         student = search_student(name_value)
         if student:
             student.age = int(age_value)
@@ -449,12 +718,18 @@ def process_request(command_type, name_value, age_value, email_value, id_value):
             my_data_list[row] = data
 
     elif command_type == "_INSERT_":
-        new_student = Student(name=name_value, age=int(
-            age_value), _email=email_value, student_id=id_value)
-        my_data_list.append(new_student)
+        data = {"n_entry": name_value,
+                "Age": age_value, "email": email_value, "id": id_value}
+        my_data_list.append(data)
+        # new_student = Student(name=name_value, age=int(
+        #     age_value), _email=email_value, student_id=id_value)
+        # my_data_list.append(new_student)
 
     elif command_type == "_DELETE_":
         student = search_student(name_value)
+        row = find_row_in_my_data_list(name_value)
+        if row >= 0:
+            del my_data_list[row]
         if student:
             my_data_list.remove(student)
 
